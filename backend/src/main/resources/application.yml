@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: smart-parking-backend
+
+  datasource:
+    # 127.0.0.1 em vez de localhost: no Windows "localhost" resolve ::1 primeiro,
+    # caindo no wslrelay do Docker Desktop, que trava o handshake do Postgres.
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/smartparking}
+    username: ${DB_USER:smartparking}
+    password: ${DB_PASSWORD:smartparking}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # O schema e responsabilidade das migrations Flyway; o Hibernate apenas valida.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: America/Sao_Paulo
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${SERVER_PORT:8085}
+  error:
+    include-message: always
+
+smartparking:
+  jwt:
+    # Em producao definir JWT_SECRET por variavel de ambiente (minimo 32 caracteres).
+    secret: ${JWT_SECRET:smart-parking-chave-de-desenvolvimento-nao-use-em-producao}
+    expiracao-segundos: ${JWT_EXPIRACAO:28800}
+    emissor: smart-parking
+  mqtt:
+    habilitado: ${MQTT_HABILITADO:true}
+    broker: ${MQTT_BROKER:tcp://localhost:1883}
+    client-id: ${MQTT_CLIENT_ID:smart-parking-backend}
+    topico: ${MQTT_TOPICO:smart-parking/vaga/+}
+    qos: 1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    br.com.smartparking: INFO

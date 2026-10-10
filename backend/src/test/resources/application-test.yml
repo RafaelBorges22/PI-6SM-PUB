@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:smartparking;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    # O schema dos testes vem do Hibernate; as migrations sao exercitadas no Postgres real.
+    enabled: false
+
+smartparking:
+  jwt:
+    secret: chave-de-teste-do-smart-parking-com-mais-de-32-bytes
+    expiracao-segundos: 3600
+    emissor: smart-parking
+  mqtt:
+    # Os testes exercitam o LeituraSensorService diretamente, sem broker.
+    habilitado: false
+
+logging:
+  level:
+    br.com.smartparking: WARN
+    org.hibernate: WARN
