@@ -1,0 +1,1665 @@
+{
+  "info": {
+    "_postman_id": "b7e1c0a2-5f34-4d18-9a6e-1c2d3e4f5a60",
+    "name": "Smart Parking API",
+    "description": "Collection de testes da API REST do Smart Parking (PI-6SM).\n\n## Como usar\n\n1. Suba a infra e o backend:\n   - `docker compose up -d` (Postgres + Mosquitto)\n   - `cd backend && ./gradlew bootRun`\n2. Rode **Autenticacao > Login (ADMIN)** primeiro: o script salva o token na variavel `token` e todas as demais requests ja o usam automaticamente (Bearer no nivel da collection).\n3. As requests de criacao salvam o id gerado (`blocoCriadoId`, `vagaCriadaId`, `dispositivoCriadoId`, `usuarioCriadoId`) para as de atualizacao e exclusao.\n4. Para rodar tudo de uma vez use o **Collection Runner** na ordem em que as pastas estao: Autenticacao -> Dashboard -> Blocos -> Vagas -> Dispositivos -> Usuarios -> Limpeza -> Erros esperados.\n\n## Variaveis\n\n| Variavel | Padrao | Uso |\n|---|---|---|\n| `baseUrl` | `http://localhost:8085` | porta definida em `application.yml` (`SERVER_PORT:8085`) |\n| `token` | (vazio) | preenchido pelo Login (ADMIN) |\n| `tokenUser` | (vazio) | preenchido pelo Login (USER), usado nos testes de 403 |\n| `adminEmail` / `adminSenha` | `admin@smartparking.com` / `123456` | usuario semeado pelo DataSeeder |\n| `userEmail` / `userSenha` | `user@smartparking.com` / `123456` | usuario semeado pelo DataSeeder |\n\nDados de demonstracao criados pela migration V2: 3 blocos, 12 vagas (numeros 1 a 12) e 4 dispositivos ESP32.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Garante que o baseUrl exista mesmo em ambientes recem-importados.",
+          "if (!pm.collectionVariables.get('baseUrl')) {",
+          "    pm.collectionVariables.set('baseUrl', 'http://localhost:8085');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Teste comum a todas as requests da collection.",
+          "pm.test('Tempo de resposta abaixo de 3s', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8085", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "tokenUser", "value": "", "type": "string" },
+    { "key": "adminEmail", "value": "admin@smartparking.com", "type": "string" },
+    { "key": "adminSenha", "value": "123456", "type": "string" },
+    { "key": "userEmail", "value": "user@smartparking.com", "type": "string" },
+    { "key": "userSenha", "value": "123456", "type": "string" },
+    { "key": "blocoId", "value": "1", "type": "string" },
+    { "key": "vagaId", "value": "1", "type": "string" },
+    { "key": "dispositivoId", "value": "1", "type": "string" },
+    { "key": "usuarioId", "value": "1", "type": "string" },
+    { "key": "blocoCriadoId", "value": "", "type": "string" },
+    { "key": "vagaCriadaId", "value": "", "type": "string" },
+    { "key": "dispositivoCriadoId", "value": "", "type": "string" },
+    { "key": "usuarioCriadoId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Autenticacao",
+      "description": "POST /api/auth/signin e o unico endpoint publico. Todos os demais exigem o header Authorization: Bearer <token>.",
+      "item": [
+        {
+          "name": "Login (ADMIN)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"senha\": \"{{adminSenha}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Autentica o administrador semeado pelo DataSeeder e guarda o JWT na variavel `token`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Retornou um token JWT', function () {",
+                  "    pm.expect(json.token).to.be.a('string').and.to.have.length.above(20);",
+                  "});",
+                  "",
+                  "pm.test('Perfil e ADMIN', function () {",
+                  "    pm.expect(json.role).to.eql('ADMIN');",
+                  "    pm.expect(json.type).to.eql('Bearer');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('token', json.token);",
+                  "pm.collectionVariables.set('adminUsuarioId', json.usuarioId);",
+                  "console.log('Token ADMIN salvo na variavel token');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (USER)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"senha\": \"{{userSenha}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Autentica o operador (role USER). O token vai para `tokenUser` e e usado na pasta 'Erros esperados' para provar o 403 na escrita."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Perfil e USER', function () { pm.expect(json.role).to.eql('USER'); });",
+                  "",
+                  "pm.collectionVariables.set('tokenUser', json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login com senha invalida (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"senha\": \"senha-errada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dados do token (GET /api/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Devolve o usuario dono do token enviado no header."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('E o usuario do token e a senha nao vaza', function () {",
+                  "    pm.expect(json.email).to.eql(pm.collectionVariables.get('adminEmail'));",
+                  "    pm.expect(json).to.not.have.property('senha');",
+                  "    pm.expect(json).to.not.have.property('senhaHash');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Dashboard e medicoes",
+      "description": "Dados agregados consumidos pelos frontends Web, Mobile e Desktop. Leitura exclusiva de ADMIN.",
+      "item": [
+        {
+          "name": "Resumo do dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard"]
+            },
+            "description": "Totais de blocos, vagas, ocupacao e dispositivos, com o detalhamento por bloco."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Contem os totais esperados', function () {",
+                  "    ['totalBlocos', 'totalVagas', 'livres', 'ocupadas', 'manutencao',",
+                  "     'taxaOcupacaoPercentual', 'dispositivosOnline', 'dispositivosOffline']",
+                  "        .forEach(function (campo) { pm.expect(json).to.have.property(campo); });",
+                  "    pm.expect(json.blocos).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Livres + ocupadas + manutencao = total de vagas', function () {",
+                  "    pm.expect(json.livres + json.ocupadas + json.manutencao).to.eql(json.totalVagas);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ultimas 100 medicoes (MQTT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicoes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "medicoes"]
+            },
+            "description": "Historico das leituras recebidas pelo broker MQTT. Vem vazio enquanto nenhum ESP32 (ou simulador) tiver publicado em smart-parking/vaga/+."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Retorna uma lista', function () {",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Blocos (CRUD 1)",
+      "description": "Areas/setores do estacionamento. GET para qualquer autenticado; POST/PUT/DELETE apenas ADMIN.",
+      "item": [
+        {
+          "name": "Listar blocos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const lista = pm.response.json();",
+                  "",
+                  "pm.test('Retorna uma lista de blocos', function () {",
+                  "    pm.expect(lista).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Guarda o primeiro bloco para as requests seguintes (util rodando fora de ordem).",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('blocoId', lista[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar bloco por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/{{blocoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "{{blocoId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Estrutura do bloco', function () {",
+                  "    pm.expect(json).to.have.property('nome');",
+                  "    pm.expect(json).to.have.property('status');",
+                  "    pm.expect(json).to.have.property('totalVagas');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vagas do bloco (com ocupacao)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/{{blocoId}}/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "{{blocoId}}", "vagas"]
+            },
+            "description": "Bloco + suas vagas + resumo (livres, ocupadas, manutencao)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Traz as vagas e o resumo de ocupacao', function () {",
+                  "    pm.expect(json.vagas).to.be.an('array');",
+                  "    pm.expect(json).to.have.property('livres');",
+                  "    pm.expect(json).to.have.property('ocupadas');",
+                  "    pm.expect(json).to.have.property('manutencao');",
+                  "});",
+                  "",
+                  "pm.test('Resumo bate com a quantidade de vagas', function () {",
+                  "    pm.expect(json.livres + json.ocupadas + json.manutencao).to.eql(json.vagas.length);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar bloco (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Bloco Postman\",\n  \"descricao\": \"Bloco criado pelos testes da collection\",\n  \"localizacao\": \"Subsolo 2\",\n  \"status\": \"ATIVO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            },
+            "description": "status aceita ATIVO ou INATIVO (padrao ATIVO). O id gerado vai para `blocoCriadoId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 Created', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "pm.test('Header Location aponta para o recurso', function () {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/api/blocos/');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Bloco criado com os dados enviados', function () {",
+                  "    pm.expect(json.nome).to.eql('Bloco Postman');",
+                  "    pm.expect(json.status).to.eql('ATIVO');",
+                  "    pm.expect(json.totalVagas).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('blocoCriadoId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar bloco com nome duplicado (409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Bloco Postman\",\n  \"descricao\": \"Mesmo nome do bloco anterior\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            },
+            "description": "O nome do bloco e unico: repetir devolve 409 com o corpo padrao de erro."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 Conflict', function () { pm.response.to.have.status(409); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Corpo padrao de erro', function () {",
+                  "    pm.expect(json).to.have.property('mensagem');",
+                  "    pm.expect(json).to.have.property('caminho');",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar bloco sem nome (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"\",\n  \"descricao\": \"Payload invalido de proposito\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "",
+                  "pm.test('Aponta o campo invalido', function () {",
+                  "    pm.expect(pm.response.json().campos).to.have.property('nome');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar bloco (ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Bloco Postman Editado\",\n  \"descricao\": \"Atualizado pela collection\",\n  \"localizacao\": \"Subsolo 2\",\n  \"status\": \"INATIVO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/{{blocoCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "{{blocoCriadoId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Dados atualizados', function () {",
+                  "    pm.expect(json.nome).to.eql('Bloco Postman Editado');",
+                  "    pm.expect(json.status).to.eql('INATIVO');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar bloco inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "999999"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404 Not Found', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Vagas (CRUD 2)",
+      "description": "Vagas monitoradas pelos sensores. numero e unico no estacionamento inteiro; um dispositivo so pode estar vinculado a uma vaga.",
+      "item": [
+        {
+          "name": "Listar vagas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const lista = pm.response.json();",
+                  "",
+                  "pm.test('Retorna uma lista de vagas', function () {",
+                  "    pm.expect(lista).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('vagaId', lista[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar vagas com filtros (status, blocoId, tipo)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas?status=LIVRE&blocoId={{blocoId}}&tipo=NORMAL",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"],
+              "query": [
+                { "key": "status", "value": "LIVRE", "description": "LIVRE | OCUPADA | MANUTENCAO" },
+                { "key": "blocoId", "value": "{{blocoId}}", "description": "id do bloco" },
+                { "key": "tipo", "value": "NORMAL", "description": "NORMAL | PCD | IDOSO | MOTO" }
+              ]
+            },
+            "description": "Os tres filtros sao opcionais e combinaveis. Desmarque os que nao quiser usar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const lista = pm.response.json();",
+                  "",
+                  "pm.test('Todos os itens respeitam os filtros', function () {",
+                  "    lista.forEach(function (vaga) {",
+                  "        pm.expect(vaga.status).to.eql('LIVRE');",
+                  "        pm.expect(vaga.tipo).to.eql('NORMAL');",
+                  "        pm.expect(String(vaga.blocoId)).to.eql(String(pm.collectionVariables.get('blocoId')));",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar vaga por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas/{{vagaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas", "{{vagaId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Estrutura da vaga', function () {",
+                  "    pm.expect(json).to.have.property('numero');",
+                  "    pm.expect(json).to.have.property('blocoNome');",
+                  "    pm.expect(['LIVRE', 'OCUPADA', 'MANUTENCAO']).to.include(json.status);",
+                  "    pm.expect(['NORMAL', 'PCD', 'IDOSO', 'MOTO']).to.include(json.tipo);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar vaga (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 901,\n  \"tipo\": \"PCD\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": {{blocoCriadoId}},\n  \"dispositivoId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"]
+            },
+            "description": "Cria a vaga 901 dentro do bloco criado na pasta anterior. Rode 'Criar bloco (ADMIN)' antes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 Created', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Vaga criada com os dados enviados', function () {",
+                  "    pm.expect(json.numero).to.eql(901);",
+                  "    pm.expect(json.tipo).to.eql('PCD');",
+                  "    pm.expect(json.status).to.eql('LIVRE');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('vagaCriadaId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar vaga com numero duplicado (409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 901,\n  \"tipo\": \"NORMAL\",\n  \"blocoId\": {{blocoCriadoId}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar vaga com numero invalido (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 0,\n  \"tipo\": \"NORMAL\",\n  \"blocoId\": {{blocoCriadoId}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"]
+            },
+            "description": "numero precisa ser maior que zero (@Min(1))."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "",
+                  "pm.test('Aponta o campo numero', function () {",
+                  "    pm.expect(pm.response.json().campos).to.have.property('numero');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar vaga em bloco inexistente (404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 902,\n  \"tipo\": \"NORMAL\",\n  \"blocoId\": 999999\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404 Not Found', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar vaga (ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 901,\n  \"tipo\": \"MOTO\",\n  \"status\": \"MANUTENCAO\",\n  \"blocoId\": {{blocoCriadoId}},\n  \"dispositivoId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas/{{vagaCriadaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas", "{{vagaCriadaId}}"]
+            },
+            "description": "Em MANUTENCAO a vaga deixa de ser atualizada pelas leituras do sensor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Dados atualizados', function () {",
+                  "    pm.expect(json.tipo).to.eql('MOTO');",
+                  "    pm.expect(json.status).to.eql('MANUTENCAO');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Dispositivos (CRUD 3)",
+      "description": "ESP32 instalados nas vagas. nome, macAddress e mqttTopic sao unicos; o nome deve ser igual ao DEVICE_ID gravado no firmware.",
+      "item": [
+        {
+          "name": "Listar dispositivos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const lista = pm.response.json();",
+                  "",
+                  "pm.test('Retorna uma lista de dispositivos', function () {",
+                  "    pm.expect(lista).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('dispositivoId', lista[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar dispositivo por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos/{{dispositivoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos", "{{dispositivoId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Estrutura do dispositivo', function () {",
+                  "    pm.expect(json).to.have.property('macAddress');",
+                  "    pm.expect(json).to.have.property('mqttTopic');",
+                  "    pm.expect(['ONLINE', 'OFFLINE', 'MANUTENCAO']).to.include(json.status);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medicoes do dispositivo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos/{{dispositivoId}}/medicoes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos", "{{dispositivoId}}", "medicoes"]
+            },
+            "description": "Ultimas 50 leituras recebidas via MQTT deste dispositivo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Retorna uma lista', function () {",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar dispositivo (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-POSTMAN-01\",\n  \"macAddress\": \"AA:BB:CC:DD:EE:90\",\n  \"tipo\": \"ESP32\",\n  \"mqttTopic\": \"smart-parking/vaga/90\",\n  \"status\": \"OFFLINE\",\n  \"vagaId\": {{vagaCriadaId}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos"]
+            },
+            "description": "tipo: ESP32 | ESP8266 | OUTRO. status: ONLINE | OFFLINE | MANUTENCAO. vagaId nulo deixa o dispositivo sem vaga."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 Created', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Dispositivo criado e vinculado a vaga', function () {",
+                  "    pm.expect(json.nome).to.eql('ESP32-POSTMAN-01');",
+                  "    pm.expect(json.macAddress).to.eql('AA:BB:CC:DD:EE:90');",
+                  "    pm.expect(String(json.vagaId)).to.eql(String(pm.collectionVariables.get('vagaCriadaId')));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('dispositivoCriadoId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar dispositivo com MAC invalido (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-POSTMAN-02\",\n  \"macAddress\": \"MAC-INVALIDO\",\n  \"mqttTopic\": \"smart-parking/vaga/91\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos"]
+            },
+            "description": "macAddress precisa seguir o formato AA:BB:CC:DD:EE:FF."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "",
+                  "pm.test('Aponta o campo macAddress', function () {",
+                  "    pm.expect(pm.response.json().campos).to.have.property('macAddress');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar dispositivo com MAC duplicado (409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-POSTMAN-03\",\n  \"macAddress\": \"AA:BB:CC:DD:EE:90\",\n  \"mqttTopic\": \"smart-parking/vaga/92\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar dispositivo (ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-POSTMAN-01\",\n  \"macAddress\": \"AA:BB:CC:DD:EE:90\",\n  \"tipo\": \"ESP8266\",\n  \"mqttTopic\": \"smart-parking/vaga/90\",\n  \"status\": \"ONLINE\",\n  \"vagaId\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos/{{dispositivoCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos", "{{dispositivoCriadoId}}"]
+            },
+            "description": "vagaId null desvincula o dispositivo da vaga (a vaga continua existindo)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Dispositivo atualizado e desvinculado', function () {",
+                  "    pm.expect(json.tipo).to.eql('ESP8266');",
+                  "    pm.expect(json.status).to.eql('ONLINE');",
+                  "    pm.expect(json.vagaId).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Usuarios (CRUD 4)",
+      "description": "Rota inteiramente restrita a ADMIN. A senha nunca aparece nas respostas e o ultimo ADMIN ativo nao pode ser removido nem rebaixado.",
+      "item": [
+        {
+          "name": "Listar usuarios (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const lista = pm.response.json();",
+                  "",
+                  "pm.test('Nenhuma senha e exposta', function () {",
+                  "    lista.forEach(function (u) {",
+                  "        pm.expect(u).to.not.have.property('senha');",
+                  "        pm.expect(u).to.not.have.property('senhaHash');",
+                  "    });",
+                  "});",
+                  "",
+                  "if (lista.length > 0) {",
+                  "    pm.collectionVariables.set('usuarioId', lista[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar usuario por id (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "{{usuarioId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Estrutura do usuario', function () {",
+                  "    pm.expect(json).to.have.property('email');",
+                  "    pm.expect(['ADMIN', 'USER']).to.include(json.role);",
+                  "    pm.expect(json.ativo).to.be.a('boolean');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar usuario (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Postman\",\n  \"email\": \"maria.postman@smartparking.com\",\n  \"senha\": \"senha123\",\n  \"role\": \"USER\",\n  \"ativo\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            },
+            "description": "senha e obrigatoria na criacao (6 a 100 caracteres). role: ADMIN | USER."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 Created', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test('Usuario criado sem expor a senha', function () {",
+                  "    pm.expect(json.email).to.eql('maria.postman@smartparking.com');",
+                  "    pm.expect(json.role).to.eql('USER');",
+                  "    pm.expect(json).to.not.have.property('senha');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('usuarioCriadoId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar usuario com email invalido (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Email Ruim\",\n  \"email\": \"nao-e-um-email\",\n  \"senha\": \"senha123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "",
+                  "pm.test('Aponta o campo email', function () {",
+                  "    pm.expect(pm.response.json().campos).to.have.property('email');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar usuario com email duplicado (409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Duplicada\",\n  \"email\": \"maria.postman@smartparking.com\",\n  \"senha\": \"senha123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar usuario mantendo a senha (ADMIN)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Postman Editada\",\n  \"email\": \"maria.postman@smartparking.com\",\n  \"senha\": null,\n  \"role\": \"USER\",\n  \"ativo\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "{{usuarioCriadoId}}"]
+            },
+            "description": "senha nula ou vazia no PUT mantem a senha atual."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Nome atualizado', function () {",
+                  "    pm.expect(pm.response.json().nome).to.eql('Maria Postman Editada');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Limpeza (DELETE)",
+      "description": "Remove, na ordem correta, tudo o que a collection criou. A ordem importa: a vaga precisa sair antes do bloco (bloco com vagas devolve 409).",
+      "item": [
+        {
+          "name": "Excluir bloco com vagas (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/{{blocoCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "{{blocoCriadoId}}"]
+            },
+            "description": "Prova a regra de negocio: o bloco ainda tem a vaga 901, entao a exclusao e recusada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir dispositivo criado",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos/{{dispositivoCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos", "{{dispositivoCriadoId}}"]
+            },
+            "description": "Excluir um dispositivo desvincula a vaga automaticamente (a vaga nao e removida)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir vaga criada",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/vagas/{{vagaCriadaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vagas", "{{vagaCriadaId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir bloco criado",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos/{{blocoCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos", "{{blocoCriadoId}}"]
+            },
+            "description": "Agora o bloco esta vazio e pode ser removido."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir usuario criado",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioCriadoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "{{usuarioCriadoId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Erros esperados (401 / 403)",
+      "description": "Comprova as regras de seguranca: sem token -> 401; token de USER tentando escrever ou acessar /api/usuarios -> 403. Rode 'Login (USER)' antes.",
+      "item": [
+        {
+          "name": "Sem token (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function () { pm.response.to.have.status(401); });",
+                  "",
+                  "pm.test('Mensagem de token ausente', function () {",
+                  "    pm.expect(pm.response.json().mensagem).to.include('Token');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token invalido (401)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "token.invalido.aqui", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER lendo blocos (200)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{tokenUser}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            },
+            "description": "Leitura e liberada para qualquer usuario autenticado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER criando bloco (403)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{tokenUser}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Bloco Proibido\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/blocos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "blocos"]
+            },
+            "description": "Escrita e exclusiva de ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 Forbidden', function () { pm.response.to.have.status(403); });",
+                  "",
+                  "pm.test('Mensagem de acesso negado', function () {",
+                  "    pm.expect(pm.response.json().mensagem).to.include('Acesso negado');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER listando usuarios (403)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{tokenUser}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            },
+            "description": "Todo o CRUD de usuarios exige ADMIN, inclusive a leitura."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER listando sensores (403)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{tokenUser}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dispositivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dispositivos"]
+            },
+            "description": "Sensores sao exclusivos de ADMIN, inclusive na leitura: a secao correspondente fica oculta para o USER nos frontends."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER lendo o dashboard (403)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{tokenUser}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard"]
+            },
+            "description": "Dashboard e leituras (/api/medicoes) tambem exigem ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Infra",
+      "description": "Endpoints publicos de apoio.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Aplicacao esta UP', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI (JSON)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["v3", "api-docs"]
+            },
+            "description": "Especificacao OpenAPI gerada pelo springdoc. A UI interativa fica em {{baseUrl}}/swagger-ui.html."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Documenta os caminhos da API', function () {",
+                  "    pm.expect(pm.response.json().paths).to.have.property('/api/blocos');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

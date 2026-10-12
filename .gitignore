@@ -30,3 +30,6 @@ Thumbs.db
 # Segredos e configuracao local
 *.env
 .env
+
+# Ignorando pasta docs
+docs/
