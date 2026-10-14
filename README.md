@@ -1,11 +1,11 @@
 # 🚗 Smart Parking — Sistema Inteligente de Estacionamento
 
-| | |
-|---|---|
-| **Projeto** | Smart Parking — Sistema Inteligente de Estacionamento |
-| **Grupo** | `<NOME DO GRUPO>` |
+| |                                                                           |
+|---|---------------------------------------------------------------------------|
+| **Projeto** | Smart Parking — Sistema Inteligente de Estacionamento                     |
+| **Grupo** | `Rafael Mascarenhas Borges` `Guilherme Souza Alves`                       |
 | **Disciplina** | Laboratório de Desenvolvimento Multiplataforma — FATEC (DSM, 6º semestre) |
-| **Repositório** | <https://github.com/RafaelBorges22/PI-6SM> |
+| **Repositório** | <https://github.com/RafaelBorges22/PI-6SM>                                |
 
 ## Integrantes e responsabilidades
 
