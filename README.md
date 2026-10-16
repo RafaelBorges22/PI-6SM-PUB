@@ -5,7 +5,7 @@
 | **Projeto** | Smart Parking — Sistema Inteligente de Estacionamento                     |
 | **Grupo** | `Rafael Mascarenhas Borges` `Guilherme Souza Alves`                       |
 | **Disciplina** | Laboratório de Desenvolvimento Multiplataforma — FATEC (DSM, 6º semestre) |
-| **Repositório** | <https://github.com/RafaelBorges22/PI-6SM>                                |
+| **Repositório** | <https://github.com/RafaelBorges22/PI-6SM-PUB>                                |
 
 ## Integrantes e responsabilidades
 
