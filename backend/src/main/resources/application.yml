@@ -48,6 +48,12 @@ smartparking:
     client-id: ${MQTT_CLIENT_ID:smart-parking-backend}
     topico: ${MQTT_TOPICO:smart-parking/vaga/+}
     qos: 1
+  dispositivos:
+    # Marca OFFLINE o dispositivo ONLINE sem mensagem MQTT ha mais de N segundos.
+    # O ESP32 manda heartbeat a cada 30 s, entao 90 s = 3 heartbeats perdidos.
+    monitor-offline-habilitado: ${MONITOR_OFFLINE_HABILITADO:true}
+    tempo-limite-offline-segundos: ${TEMPO_LIMITE_OFFLINE:90}
+    intervalo-verificacao-ms: ${INTERVALO_VERIFICACAO_OFFLINE_MS:30000}
 
 management:
   endpoints:

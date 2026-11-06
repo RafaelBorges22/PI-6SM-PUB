@@ -4,6 +4,7 @@ plugins {
     kotlin("plugin.jpa") version "2.2.21"
     id("org.springframework.boot") version "3.5.9"
     id("io.spring.dependency-management") version "1.1.7"
+    jacoco
 }
 
 group = "br.com.smartparking"
@@ -57,7 +58,24 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Mockito carrega o seu agente em tempo de execucao; o JDK 21 so avisa, isto silencia o aviso.
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
     testLogging {
         events("passed", "skipped", "failed")
+    }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+// Cobertura de testes (JaCoCo): ./gradlew test gera build/reports/jacoco/test/html/index.html
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
     }
 }

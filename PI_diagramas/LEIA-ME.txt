@@ -1,0 +1,117 @@
+UC01 - Monitorar Ocupacao da Vaga via Sensor
+Grafo de Fluxo de Controle (GFC) derivado de 03_diagrama_atividades.puml
+=========================================================================
+
+NOS (numero entre parenteses no diagrama de atividades)
+  1  Receber mensagem MQTT (topico + payload)
+  2  [P] Payload e JSON valido?
+  3  E1 - Descartar: payload invalido
+  4  [P] Distancia informada e >= 0? (RN01)
+  5  E2 - Descartar: distancia ausente/negativa
+  6  [P] Status e LIVRE ou OCUPADA? (RN02)
+  7  E3 - Descartar: status desconhecido
+  8  [P] Dispositivo encontrado pelo topico? (RN03)
+  9  [P] Encontrado por deviceId ou vagaId? (RN03)
+ 10  E4 - Descartar: dispositivo nao cadastrado
+ 11  [P] Payload traz timestamp? (RN05)
+ 12  Usar timestamp do payload
+ 13  A2 - Usar hora do servidor
+ 14  Marcar dispositivo ONLINE + gravar Medicao
+ 15  [P] Dispositivo vinculado a uma vaga?
+ 16  [P] vagaId do payload aponta para vaga existente?
+ 17  E5 - Medicao registrada sem vaga
+ 18  [P] Vaga em MANUTENCAO? (RN04)
+ 19  A4 - Ignorar leitura
+ 20  [P] Status lido igual ao atual? (RN06)
+ 21  A5 - Nada a alterar
+ 22  Atualizar status da vaga e salvar
+ 23  Fim
+
+ARESTAS (E = 32)
+  1-2, 2-3, 2-4, 3-23, 4-5, 4-6, 5-23, 6-7, 6-8, 7-23, 8-9, 8-11,
+  9-10, 9-11, 10-23, 11-12, 11-13, 12-14, 13-14, 14-15, 15-16, 15-18,
+  16-17, 16-18, 17-23, 18-19, 18-20, 19-23, 20-21, 20-22, 21-23, 22-23
+
+COMPLEXIDADE CICLOMATICA
+  N = 23, E = 32, P = 10 (nos 2, 4, 6, 8, 9, 11, 15, 16, 18, 20)
+  V(G) = E - N + 2 = 32 - 23 + 2 = 11 = P + 1  ->  11 caminhos (C1 a C11)
+
+COMO MONTAR NO GRAPHONLINE (https://graphonline.top/pt)
+  Opcao A (mais rapida):
+    1. Menu "Grafo" > "Matriz de adjacencia".
+    2. Apague o conteudo, cole a matriz abaixo e marque "Orientado" (dirigido).
+    3. Clique em "Plotar grafo". Os vertices saem numerados 0..22:
+       renomeie cada um para 1..23 (vertice 0 = no 1, ..., vertice 22 = no 23)
+       ou deixe assim e informe a correspondencia na legenda.
+    4. Arraste os vertices de cima para baixo seguindo o diagrama de atividades
+       (decisoes no centro, saidas de excecao para a direita, 23 embaixo).
+    5. Menu "Grafo" > "Salvar imagem" e inserir no documento.
+  Opcao B: crie os 23 vertices manualmente (botao "Adicionar vertice") e
+    ligue as 32 arestas acima com "Conectar vertices" em modo orientado.
+
+MATRIZ DE ADJACENCIA 23x23 (linha = origem, coluna = destino)
+0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+=========================================================================
+Grafo de Estados (GE) do objeto Vaga (atributo status)
+derivado de 05_diagrama_estados.puml
+=========================================================================
+
+VERTICES (5)
+  I = inicio (vaga ainda nao existe)
+  L = LIVRE
+  O = OCUPADA
+  M = MANUTENCAO
+  F = fim (vaga excluida)
+
+TRANSICOES (12)  - arestas dirigidas, rotule cada uma com tN
+  t1   I -> L   criar vaga (ADMIN, POST /api/vagas; status padrao LIVRE)
+  t2   L -> O   leitura OCUPADA do sensor
+  t3   O -> L   leitura LIVRE do sensor
+  t4   L -> L   leitura LIVRE (sem alteracao - RN06)      [laco]
+  t5   O -> O   leitura OCUPADA (sem alteracao - RN06)    [laco]
+  t6   L -> M   ADMIN coloca em manutencao (PUT)
+  t7   O -> M   ADMIN coloca em manutencao (PUT)
+  t8   M -> M   leitura ignorada (RN04)                   [laco]
+  t9   M -> L   ADMIN libera a vaga (PUT)
+  t10  L -> F   excluir vaga (DELETE)
+  t11  O -> F   excluir vaga (DELETE)
+  t12  M -> F   excluir vaga (DELETE)
+
+SEQUENCIAS (Quadro 2b) - juntas cobrem todos os estados e as 12 transicoes
+  S1  t1 t2 t3 t10      I L O L F
+  S2  t1 t4 t10         I L L F
+  S3  t1 t2 t5 t11      I L O O F
+  S4  t1 t6 t8 t9 t10   I L M M L F
+  S5  t1 t2 t7 t12      I L O M F
+
+COMO MONTAR NO GRAPHONLINE
+  1. Novo grafo; adicione 5 vertices e renomeie para I, L, O, M, F
+     (dispostos em linha: I a esquerda, L, O em cima, M embaixo, F a direita).
+  2. "Conectar vertices" em modo ORIENTADO e crie as 12 arestas acima.
+     Lacos (t4, t5, t8): clique duas vezes no mesmo vertice.
+  3. Clique em cada aresta e coloque o peso/rotulo "t1".."t12".
+  4. Menu "Grafo" > "Salvar imagem".

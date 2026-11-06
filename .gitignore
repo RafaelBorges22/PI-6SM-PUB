@@ -33,3 +33,8 @@ Thumbs.db
 
 # Ignorando pasta docs
 docs/
+
+# Diagramas (PlantUML e imagens) da pasta PI_diagramas
+PI_diagramas/*.puml
+PI_diagramas/*.svg
+PI_diagramas/*.png

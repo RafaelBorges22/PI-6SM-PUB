@@ -7,16 +7,6 @@
 | **Disciplina** | Laboratório de Desenvolvimento Multiplataforma — FATEC (DSM, 6º semestre) |
 | **Repositório** | <https://github.com/RafaelBorges22/PI-6SM>                                |
 
-## Integrantes e responsabilidades
-
-| Integrante | Entidades (backend + frontend) |
-|---|---|
-| `<NOME DO INTEGRANTE 1>` | **Bloco** e **Vaga** |
-| `<NOME DO INTEGRANTE 2>` | **Dispositivo** e **Usuário** (e a autenticação `/signin` / `/signup`) |
-
-Cada integrante implementou, para as suas entidades: entidade JPA, repositório (com a
-consulta JPQL `LIKE`), DTOs de request/response, mapper, serviço, controller REST e a tela
-de formulário no frontend.
 
 ## O que a aplicação faz
 

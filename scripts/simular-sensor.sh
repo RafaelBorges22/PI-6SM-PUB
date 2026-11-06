@@ -15,8 +15,16 @@ set -euo pipefail
 
 ACAO="${1:-ciclo}"
 VAGA="${2:-1}"
-DEVICE_ID="${3:-ESP32-VAGA-0${VAGA}}"
-TOPICO="smart-parking/vaga/0${VAGA}"
+if ! [[ "$VAGA" =~ ^[0-9]+$ ]]; then
+  echo "Vaga invalida: $VAGA (use um numero, ex.: 1 ou 12)" >&2
+  exit 1
+fi
+# Numero com 2 digitos (1 -> 01, 12 -> 12), igual ao {0:D2} da versao PowerShell.
+# 10# forca base decimal: sem ele, "08" e "09" seriam lidos como octal invalido.
+VAGA_2D=$(printf '%02d' "$((10#$VAGA))")
+VAGA=$((10#$VAGA))
+DEVICE_ID="${3:-ESP32-VAGA-${VAGA_2D}}"
+TOPICO="smart-parking/vaga/${VAGA_2D}"
 CONTAINER="smartparking-mosquitto"
 
 publicar() {

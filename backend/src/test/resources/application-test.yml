@@ -20,6 +20,10 @@ smartparking:
   mqtt:
     # Os testes exercitam o LeituraSensorService diretamente, sem broker.
     habilitado: false
+  dispositivos:
+    # Os testes chamam MonitorDispositivosService direto; o agendamento fica desligado.
+    monitor-offline-habilitado: false
+    tempo-limite-offline-segundos: 90
 
 logging:
   level:
