@@ -131,8 +131,9 @@ gravação. Se a porta COM não aparecer, instale o driver **CP210x** ou **CH340
 chip USB da placa).
 
 Na Arduino IDE: instale o pacote de placas *esp32 by Espressif*, as bibliotecas
-**PubSubClient** e **ArduinoJson (7.x)**, renomeie `main.cpp` para `esp32-vaga.ino` (mantendo
-`config.h` na mesma pasta) e grave com a placa *ESP32 Dev Module*.
+**PubSubClient** e **ArduinoJson (7.x)**, abra `iot/arduino-ide/esp32-vaga/esp32-vaga.ino`
+(já vem com o `config.h` na mesma pasta), escolha a placa *ESP32 Dev Module* e a porta COM do
+kit em *Ferramentas > Porta*. Passo a passo completo: [`EXECUCAO-SALA-DE-AULA.md`](../EXECUCAO-SALA-DE-AULA.md).
 
 ## 7. Verificar ponta a ponta
 

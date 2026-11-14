@@ -1,0 +1,2907 @@
+{
+  "info": {
+    "_postman_id": "9e48a182-5b37-42e7-8f7c-8246d36cbf54",
+    "name": "Smart Parking - UC01 Evidências (Teste de Sistema)",
+    "description": "Casos de teste CT01–CT15 da planilha do UC01 — Monitorar Ocupação da Vaga via Sensor.\n\nCada pasta é independente: (1) prepara o estado inicial, (2) envia a leitura do sensor pelo simulador (ponte HTTP→MQTT, `scripts/ponte-mqtt-http.py`), (3+) verifica a saída esperada. A aba *Test Results* de cada requisição é a evidência.\n\nPré-requisitos: containers smartparking-postgres e smartparking-mosquitto, backend na porta 8085 e a ponte na porta 8099.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Hora local atual no formato LocalDateTime (sem fuso), usada no campo \"timestamp\".",
+          "const p = n => String(n).padStart(2, '0');",
+          "const d = new Date();",
+          "pm.collectionVariables.set('ts', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`);",
+          "",
+          "// Login automatico como ADMIN quando ainda nao ha token.",
+          "if (!pm.collectionVariables.get('token') && !pm.request.url.toString().includes('/api/auth/signin')) {",
+          "    pm.sendRequest({",
+          "        url: pm.collectionVariables.get('baseUrl') + '/api/auth/signin',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ email: pm.collectionVariables.get('adminEmail'), senha: pm.collectionVariables.get('adminSenha') }) }",
+          "    }, (err, res) => {",
+          "        if (!err && res.code === 200) pm.collectionVariables.set('token', res.json().token);",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8085",
+      "type": "string"
+    },
+    {
+      "key": "ponteUrl",
+      "value": "http://localhost:8099",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@smartparking.com",
+      "type": "string"
+    },
+    {
+      "key": "adminSenha",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "dispositivoVaga01Id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ts",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tsEnviado",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "horaPublicacao",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "maxMedicaoId",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "statusVagasAntes",
+      "value": "{}",
+      "type": "string"
+    },
+    {
+      "key": "dataHoraMedicaoCT11",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Preparação do ambiente",
+      "description": "Execute uma vez antes das gravações.",
+      "item": [
+        {
+          "name": "00 · 1 - Login ADMIN (gera o token JWT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/signin",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"senha\": \"{{adminSenha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login realizado (200)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "00 · 2 - Simulador do sensor (ponte MQTT) no ar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{ponteUrl}}/saude",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ponte HTTP -> MQTT respondendo', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "00 · 3 - Backend no ar: dispositivo ESP32-VAGA-01",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ESP32-VAGA-01 cadastrado no tópico smart-parking/vaga/01', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().nome).to.eql('ESP32-VAGA-01');",
+                  "    pm.expect(pm.response.json().mqttTopic).to.eql('smart-parking/vaga/01');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT01 - Fluxo Principal: vaga LIVRE passa a OCUPADA (d = 80,5)",
+      "description": "C5 — RN01 d = 80,5 · RN02 OCUPADA · tópico 01 · status atual LIVRE · timestamp informado.",
+      "item": [
+        {
+          "name": "CT01 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT01: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT01 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: Vaga 1 LIVRE -> OCUPADA', 'Vaga 1: LIVRE -> OCUPADA');",
+                  "testeLog('Log: leitura processada (80.5 cm, mudou=true)', 'distancia=80.5cm status=OCUPADA vaga=1 mudou=true');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT01 · 3 - Verificar: vaga 01 passa a OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT01 · 4 - Verificar: medição gravada (80.5 / OCUPADA)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));",
+                  "",
+                  "pm.test('Data/hora da medição = timestamp do payload', () =>",
+                  "    pm.expect(String(m.dataHora).substring(0, 19)).to.eql(pm.collectionVariables.get('tsEnviado')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT01 · 5 - Verificar: dispositivo ONLINE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('Dispositivo ESP32-VAGA-01 ONLINE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(d.nome).to.eql('ESP32-VAGA-01');",
+                  "    pm.expect(d.status).to.eql('ONLINE');",
+                  "});",
+                  "",
+                  "pm.test('Última comunicação = timestamp enviado no payload', () =>",
+                  "    pm.expect(String(d.ultimaComunicacao).substring(0, 19)).to.eql(pm.collectionVariables.get('tsEnviado')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT02 - Fluxo Principal: vaga OCUPADA passa a LIVRE (d = 250,8)",
+      "description": "C5 — RN01 d = 250,8 · RN02 LIVRE · tópico 01 · status atual OCUPADA · timestamp informado.",
+      "item": [
+        {
+          "name": "CT02 · 1 - Estado inicial: vaga 01 OCUPADA",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT02: deixa a vaga 01 em OCUPADA (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"OCUPADA\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta OCUPADA antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT02 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":250.8,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: Vaga 1 OCUPADA -> LIVRE', 'Vaga 1: OCUPADA -> LIVRE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT02 · 3 - Verificar: vaga 01 passa a LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT02 · 4 - Verificar: medição gravada (250.8 / LIVRE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 250.8', () => pm.expect(Number(m.distancia)).to.eql(250.8));",
+                  "pm.test('Status gravado = LIVRE', () => pm.expect(m.status).to.eql('LIVRE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT02 · 5 - Verificar: dispositivo ONLINE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('Dispositivo ESP32-VAGA-01 ONLINE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(d.nome).to.eql('ESP32-VAGA-01');",
+                  "    pm.expect(d.status).to.eql('ONLINE');",
+                  "});",
+                  "",
+                  "pm.test('Última comunicação = timestamp enviado no payload', () =>",
+                  "    pm.expect(String(d.ultimaComunicacao).substring(0, 19)).to.eql(pm.collectionVariables.get('tsEnviado')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT03 - AVL limite inferior: d = 0,00 aceita",
+      "description": "C5 — RN01 d = 0,00 (limite inferior válido) · RN02 OCUPADA · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT03 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT03: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT03 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":0.00,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura aceita com distância 0,00', /distancia=0(\\.0+)?cm status=OCUPADA vaga=1 mudou=true/);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT03 · 3 - Verificar: vaga 01 passa a OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT03 · 4 - Verificar: medição gravada (0,00 / OCUPADA)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 0', () => pm.expect(Number(m.distancia)).to.eql(0));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT04 - AVL limite superior: d = 999.999,99 aceita",
+      "description": "C5 — RN01 d = 999.999,99 (limite superior válido) · RN02 LIVRE · status atual OCUPADA.",
+      "item": [
+        {
+          "name": "CT04 · 1 - Estado inicial: vaga 01 OCUPADA",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT04: deixa a vaga 01 em OCUPADA (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"OCUPADA\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta OCUPADA antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT04 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":999999.99,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura aceita com distância 999999.99', 'distancia=999999.99cm status=LIVRE vaga=1 mudou=true');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT04 · 3 - Verificar: vaga 01 passa a LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT04 · 4 - Verificar: medição gravada (999.999,99 / LIVRE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 999999.99', () => pm.expect(Number(m.distancia)).to.eql(999999.99));",
+                  "pm.test('Status gravado = LIVRE', () => pm.expect(m.status).to.eql('LIVRE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT05 - AVL acima do limite: d = 1.000.000,00 rejeitada",
+      "description": "C5 (falha ao persistir) — d acima da precisão NUMERIC(8,2) · status atual OCUPADA.",
+      "item": [
+        {
+          "name": "CT05 · 1 - Estado inicial: vaga 01 OCUPADA",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT05: deixa a vaga 01 em OCUPADA (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"OCUPADA\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta OCUPADA antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT05 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":1000000.00,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: erro ao processar a mensagem (registrado em log)', 'Erro ao processar mensagem do topico smart-parking/vaga/01');",
+                  "testeLog('Log: banco rejeitou a distância (numeric field overflow)', 'numeric field overflow');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT05 · 3 - Verificar: nenhuma medição gravada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Nenhuma medição nova foi gravada (leitura descartada)', () => pm.expect(novas.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT05 · 4 - Verificar: vaga 01 permanece OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT05 · 5 - Verificar: consumidor MQTT continua ativo (nova leitura válida)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":250.8,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Consumidor MQTT continua ativo: nova leitura foi processada', 'MQTT [smart-parking/vaga/01]');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT06 - AVL abaixo do limite: d = -0,01 descartada",
+      "description": "C2 — RN01 d = -0,01 (inválido) · RN02 OCUPADA · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT06 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT06: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT06 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":-0.01,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura descartada (distância ausente ou negativa)', 'Payload MQTT sem distancia valida no topico smart-parking/vaga/01');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT06 · 3 - Verificar: nenhuma medição gravada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Nenhuma medição nova foi gravada (leitura descartada)', () => pm.expect(novas.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT06 · 4 - Verificar: vaga 01 permanece LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT07 - Exceção 1: payload não é JSON",
+      "description": "C1 — mensagem \"isso nao e json\" · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT07 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT07: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT07 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "isso nao e json",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura descartada (payload inválido)', 'Payload MQTT invalido no topico smart-parking/vaga/01');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT07 · 3 - Verificar: nenhuma medição gravada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Nenhuma medição nova foi gravada (leitura descartada)', () => pm.expect(novas.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT07 · 4 - Verificar: vaga 01 permanece LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT07 · 5 - Verificar: consumidor MQTT continua ativo (nova leitura válida)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":250.8,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Consumidor MQTT continua ativo: nova leitura foi processada', 'MQTT [smart-parking/vaga/01]');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT08 - Exceção 3: status desconhecido (TALVEZ)",
+      "description": "C3 — d = 100,0 · RN02 TALVEZ (inválido) · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT08 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT08: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT08 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":100.0,\"status\":\"TALVEZ\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog(\"Log: leitura descartada (status desconhecido 'TALVEZ')\", \"Status desconhecido 'TALVEZ'\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT08 · 3 - Verificar: nenhuma medição gravada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Nenhuma medição nova foi gravada (leitura descartada)', () => pm.expect(novas.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT08 · 4 - Verificar: vaga 01 permanece LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT09 - Alternativo A1: dispositivo identificado pelo deviceId",
+      "description": "C6 — tópico smart-parking/vaga/99 não cadastrado · deviceId \"esp32-vaga-01\" · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT09 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT09: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT09 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/99",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/99` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"esp32-vaga-01\",\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: tópico 99 resolvido para o dispositivo ESP32-VAGA-01 pelo deviceId', 'MQTT [smart-parking/vaga/99] device=ESP32-VAGA-01');",
+                  "testeLog('Log: vaga 1 atualizada', 'vaga=1 mudou=true');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT09 · 3 - Verificar: vaga 01 passa a OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT09 · 4 - Verificar: medição gravada (80.5 / OCUPADA)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT10 - Exceção E4: dispositivo não cadastrado",
+      "description": "C4 — tópico smart-parking/vaga/98, deviceId e vagaId não cadastrados.",
+      "item": [
+        {
+          "name": "CT10 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT10: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT10 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/98",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/98` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-NAO-EXISTE\",\"vagaId\":999,\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura descartada (dispositivo não cadastrado)', 'Nenhum dispositivo cadastrado para o topico smart-parking/vaga/98');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT10 · 3 - Verificar: nenhuma medição gravada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Nenhuma medição nova foi gravada (leitura descartada)', () => pm.expect(novas.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT11 - Alternativo A2: leitura sem timestamp (hora do servidor)",
+      "description": "C7 — payload sem o campo timestamp · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT11 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT11: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT11 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":80.5,\"status\":\"OCUPADA\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: Vaga 1 LIVRE -> OCUPADA', 'Vaga 1: LIVRE -> OCUPADA');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT11 · 3 - Verificar: vaga 01 passa a OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 passa a OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT11 · 4 - Verificar: medição com data/hora do servidor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));",
+                  "",
+                  "const segundos = s => new Date(String(s).substring(0, 19)).getTime() / 1000;",
+                  "pm.test('Data/hora da medição = hora do servidor no momento do envio (±10 s)', () =>",
+                  "    pm.expect(Math.abs(segundos(m.dataHora) - segundos(pm.collectionVariables.get('horaPublicacao')))).to.be.below(10));",
+                  "pm.collectionVariables.set('dataHoraMedicaoCT11', String(m.dataHora).substring(0, 19));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT11 · 5 - Verificar: última comunicação = hora do servidor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('Dispositivo ESP32-VAGA-01 ONLINE', () => pm.expect(d.status).to.eql('ONLINE'));",
+                  "pm.test('Última comunicação = data/hora da medição (hora do servidor)', () =>",
+                  "    pm.expect(String(d.ultimaComunicacao).substring(0, 19)).to.eql(pm.collectionVariables.get('dataHoraMedicaoCT11')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT12 - Alternativo A3: vaga localizada pelo vagaId",
+      "description": "C8 — dispositivo ESP32-TESTE sem vaga vinculada · vagaId = 2 · vaga 02 LIVRE.",
+      "item": [
+        {
+          "name": "CT12 · 1a - Pré-condição: dispositivo ESP32-TESTE sem vaga",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/dispositivos",
+            "description": "Cadastra (uma única vez) o dispositivo do tópico smart-parking/vaga/50, sem vaga vinculada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-TESTE\",\n  \"macAddress\": \"AA:BB:CC:DD:EE:50\",\n  \"tipo\": \"ESP32\",\n  \"mqttTopic\": \"smart-parking/vaga/50\",\n  \"status\": \"OFFLINE\",\n  \"vagaId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ESP32-TESTE cadastrado sem vaga vinculada (201 criado ou 409 já existente)', () =>",
+                  "    pm.expect([201, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) pm.test('Sem vaga vinculada', () => pm.expect(pm.response.json().vagaId).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT12 · 1b - Estado inicial: vaga 02 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/2",
+            "description": "Pré-condição do CT12: deixa a vaga 02 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 2,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 2,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 02 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT12 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/50",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/50` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"vagaId\":2,\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura do ESP32-TESTE aplicada na vaga 2', 'device=ESP32-TESTE');",
+                  "testeLog('Log: Vaga 2 LIVRE -> OCUPADA', 'Vaga 2: LIVRE -> OCUPADA');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT12 · 3 - Verificar: vaga 02 passa a OCUPADA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/2",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 02 passa a OCUPADA', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('OCUPADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT12 · 4 - Verificar: medição gravada (80.5 / OCUPADA)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-TESTE', () => pm.expect(m.dispositivoNome).to.eql('ESP32-TESTE'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT13 - Exceção E5: medição sem vaga vinculada",
+      "description": "C9 — dispositivo ESP32-TESTE sem vaga vinculada · vagaId = 999 inexistente.",
+      "item": [
+        {
+          "name": "CT13 · 1 - Pré-condição: dispositivo ESP32-TESTE sem vaga",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/dispositivos",
+            "description": "Cadastra (uma única vez) o dispositivo do tópico smart-parking/vaga/50, sem vaga vinculada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"ESP32-TESTE\",\n  \"macAddress\": \"AA:BB:CC:DD:EE:50\",\n  \"tipo\": \"ESP32\",\n  \"mqttTopic\": \"smart-parking/vaga/50\",\n  \"status\": \"OFFLINE\",\n  \"vagaId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ESP32-TESTE cadastrado sem vaga vinculada (201 criado ou 409 já existente)', () =>",
+                  "    pm.expect([201, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) pm.test('Sem vaga vinculada', () => pm.expect(pm.response.json().vagaId).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT13 · 2 - Estado inicial: status de todas as vagas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vagas listadas (status guardado para comparação)', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT13 · 3 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/50",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/50` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"vagaId\":999,\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: medição registrada sem vaga vinculada', 'nao esta vinculado a nenhuma vaga; medicao registrada');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT13 · 4 - Verificar: medição gravada sem vaga",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-TESTE', () => pm.expect(m.dispositivoNome).to.eql('ESP32-TESTE'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));",
+                  "",
+                  "pm.test('Medição sem vaga vinculada', () => pm.expect(m.vagaNumero).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT13 · 5 - Verificar: nenhuma vaga alterada",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const antes = JSON.parse(pm.collectionVariables.get('statusVagasAntes') || '{}');",
+                  "const depois = {};",
+                  "pm.response.json().forEach(v => { depois[v.id] = v.status; });",
+                  "pm.test('Status de todas as vagas igual ao estado inicial', () => pm.expect(depois).to.eql(antes));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT14 - Alternativo A4: vaga em MANUTENCAO não muda",
+      "description": "C10 — status atual MANUTENCAO · leitura OCUPADA.",
+      "item": [
+        {
+          "name": "CT14 · 1 - Estado inicial: vaga 01 MANUTENCAO",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT14: deixa a vaga 01 em MANUTENCAO (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"MANUTENCAO\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta MANUTENCAO antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('MANUTENCAO');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT14 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":80.5,\"status\":\"OCUPADA\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura processada sem alterar a vaga (mudou=false)', 'status=OCUPADA vaga=1 mudou=false');",
+                  "testeLogAusente('Log: nenhuma transição de status da vaga 1', 'Vaga 1:');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT14 · 3 - Verificar: vaga 01 permanece MANUTENCAO",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece MANUTENCAO', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('MANUTENCAO');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT14 · 4 - Verificar: medição gravada (80.5 / OCUPADA)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 80.5', () => pm.expect(Number(m.distancia)).to.eql(80.5));",
+                  "pm.test('Status gravado = OCUPADA', () => pm.expect(m.status).to.eql('OCUPADA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT14 · 5 - Verificar: dispositivo ONLINE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('Dispositivo ESP32-VAGA-01 ONLINE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(d.nome).to.eql('ESP32-VAGA-01');",
+                  "    pm.expect(d.status).to.eql('ONLINE');",
+                  "});",
+                  "",
+                  "pm.test('Última comunicação = timestamp enviado no payload', () =>",
+                  "    pm.expect(String(d.ultimaComunicacao).substring(0, 19)).to.eql(pm.collectionVariables.get('tsEnviado')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT14 · 6 - Pós-condição: vaga 01 volta para LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 restaurada para LIVRE', () => pm.expect(pm.response.json().status).to.eql('LIVRE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CT15 - Alternativo A5: leitura sem mudança de status",
+      "description": "C11 — d = 250,8 · RN02 LIVRE · status atual LIVRE.",
+      "item": [
+        {
+          "name": "CT15 · 1 - Estado inicial: vaga 01 LIVRE",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": "Pré-condição do CT15: deixa a vaga 01 em LIVRE (mantendo o sensor vinculado).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numero\": 1,\n  \"tipo\": \"NORMAL\",\n  \"status\": \"LIVRE\",\n  \"blocoId\": 1,\n  \"dispositivoId\": 1,\n  \"valorHora\": 5.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const auth = { Authorization: 'Bearer ' + pm.collectionVariables.get('token') };",
+                  "pm.sendRequest({ url: base + '/api/medicoes', method: 'GET', header: auth }, (err, res) => {",
+                  "    const lista = (!err && res.code === 200) ? res.json() : [];",
+                  "    pm.collectionVariables.set('maxMedicaoId', String(lista.reduce((m, x) => Math.max(m, x.id), 0)));",
+                  "});",
+                  "pm.sendRequest({ url: base + '/api/vagas', method: 'GET', header: auth }, (err, res) => {",
+                  "    const mapa = {};",
+                  "    if (!err && res.code === 200) res.json().forEach(v => { mapa[v.id] = v.status; });",
+                  "    pm.collectionVariables.set('statusVagasAntes', JSON.stringify(mapa));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 esta LIVRE antes da leitura', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT15 · 2 - Sensor envia leitura (MQTT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{ponteUrl}}/publicar?topico=smart-parking/vaga/01",
+            "description": "Publica a mensagem do corpo no tópico `smart-parking/vaga/01` do broker Mosquitto, como o ESP32 faria. A resposta traz as linhas registradas pelo backend após o processamento (`logBackend`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"deviceId\":\"ESP32-VAGA-01\",\"distancia\":250.8,\"status\":\"LIVRE\",\"timestamp\":\"{{ts}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Leitura publicada no broker MQTT (simulando o ESP32)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(r.publicado).to.be.true;",
+                  "});",
+                  "try { const m = JSON.parse(r.mensagem); if (m.timestamp) pm.collectionVariables.set('tsEnviado', m.timestamp); } catch (e) {}",
+                  "pm.collectionVariables.set('horaPublicacao', r.horaPublicacao);",
+                  "const log = (r.logBackend || []).join('\\n');",
+                  "const semLog = log.startsWith('(log do backend nao configurado');",
+                  "const testeLog = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => {",
+                  "    if (trecho instanceof RegExp) pm.expect(log).to.match(trecho); else pm.expect(log).to.include(trecho);",
+                  "});",
+                  "const testeLogAusente = (nome, trecho) => (semLog ? pm.test.skip : pm.test)(nome, () => pm.expect(log).to.not.include(trecho));",
+                  "",
+                  "testeLog('Log: leitura processada sem mudança (mudou=false)', 'status=LIVRE vaga=1 mudou=false');",
+                  "testeLogAusente('Log: nenhuma nova gravação de status da vaga 1', 'Vaga 1:');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT15 · 3 - Verificar: vaga 01 permanece LIVRE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/vagas/1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Vaga 01 permanece LIVRE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('LIVRE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT15 · 4 - Verificar: medição gravada (250.8 / LIVRE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/medicoes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const max = Number(pm.collectionVariables.get('maxMedicaoId'));",
+                  "const novas = pm.response.json().filter(m => m.id > max);",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Exatamente 1 nova medição gravada', () => pm.expect(novas.length).to.eql(1));",
+                  "const m = novas[0] || {};",
+                  "pm.test('Medição do dispositivo ESP32-VAGA-01', () => pm.expect(m.dispositivoNome).to.eql('ESP32-VAGA-01'));",
+                  "pm.test('Distância gravada = 250.8', () => pm.expect(Number(m.distancia)).to.eql(250.8));",
+                  "pm.test('Status gravado = LIVRE', () => pm.expect(m.status).to.eql('LIVRE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CT15 · 5 - Verificar: dispositivo ONLINE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/dispositivos/{{dispositivoVaga01Id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('Dispositivo ESP32-VAGA-01 ONLINE', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(d.nome).to.eql('ESP32-VAGA-01');",
+                  "    pm.expect(d.status).to.eql('ONLINE');",
+                  "});",
+                  "",
+                  "pm.test('Última comunicação = timestamp enviado no payload', () =>",
+                  "    pm.expect(String(d.ultimaComunicacao).substring(0, 19)).to.eql(pm.collectionVariables.get('tsEnviado')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

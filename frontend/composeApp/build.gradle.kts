@@ -1,12 +1,20 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
+// -Psmartparking.semAndroid=true desliga o alvo Android (usado no build Docker da Web,
+// que nao tem Android SDK). Sem a propriedade, os tres alvos continuam ativos.
+val semAndroid = providers.gradleProperty("smartparking.semAndroid").orNull == "true"
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidApplication) apply false
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
+}
+
+if (!semAndroid) {
+    apply(plugin = libs.plugins.androidApplication.get().pluginId)
 }
 
 kotlin {
@@ -18,7 +26,9 @@ kotlin {
     }
 
     // Um unico codigo-fonte alimenta os tres frontends exigidos pela avaliacao.
-    androidTarget()
+    if (!semAndroid) {
+        androidTarget()
+    }
 
     jvm("desktop")
 
@@ -52,10 +62,12 @@ kotlin {
             implementation(libs.ktor.serialization.json)
         }
 
-        androidMain.dependencies {
-            implementation(compose.preview)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.ktor.client.okhttp)
+        if (!semAndroid) {
+            androidMain.dependencies {
+                implementation(compose.preview)
+                implementation(libs.androidx.activity.compose)
+                implementation(libs.ktor.client.okhttp)
+            }
         }
 
         desktopMain.dependencies {
@@ -74,7 +86,7 @@ kotlin {
     }
 }
 
-android {
+if (!semAndroid) extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
     namespace = "br.com.smartparking.app"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 

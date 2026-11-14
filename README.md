@@ -90,11 +90,13 @@ Veículo → HC-SR04 → ESP32 → MQTT → Mosquitto → Spring Boot → Postgr
 PI-6SM/
 ├── backend/              API REST em Spring Boot + Kotlin (CRUDs, JWT, consumidor MQTT)
 ├── frontend/             Kotlin Multiplatform: um código-fonte para Mobile, Web e Desktop
-├── iot/esp32-vaga/       Firmware C++ do ESP32 com o sensor HC-SR04
+├── iot/esp32-vaga/       Firmware C++ do ESP32 com o sensor HC-SR04 (PlatformIO)
+├── iot/arduino-ide/      Mesmo firmware, pronto para abrir na Arduino IDE
 ├── infra/mosquitto/      Configuração do broker MQTT
 ├── scripts/              Simulador de sensor e automação para subir o app Mobile
 ├── docs/                 API, checklist da avaliação e roteiro de apresentação
-└── docker-compose.yml    PostgreSQL + Mosquitto
+├── docker-compose.yml    PostgreSQL + Mosquitto (+ API e Web com --profile app)
+└── .env.example          Portas e variáveis do docker compose
 ```
 
 ---
@@ -135,6 +137,11 @@ subida procura o SDK em `ANDROID_HOME`, depois `ANDROID_SDK_ROOT`, e por último
 ---
 
 ## Instalação, execução e acesso
+
+> **Em sala de aula, com o kit físico:** tudo (API, frontend Web, banco e broker) sobe em
+> containers com `docker compose --profile app up -d --build`, e o ESP32 é gravado pela
+> Arduino IDE. Passo a passo e variáveis que mudam de máquina para máquina (porta COM,
+> IP do broker, Wi-Fi, portas): [`EXECUCAO-SALA-DE-AULA.md`](EXECUCAO-SALA-DE-AULA.md).
 
 ### 1. Infraestrutura
 
@@ -282,6 +289,9 @@ cd backend; .\gradlew bootRun
 3. Ligue o HC-SR04: `TRIG` no GPIO 5, `ECHO` no GPIO 18 (via divisor de tensão para 3,3 V),
    `VCC` em 5 V e `GND` no comum.
 4. `pio run -t upload && pio device monitor`.
+
+Na Arduino IDE, abra `iot/arduino-ide/esp32-vaga/esp32-vaga.ino` e escolha a porta COM do
+kit em *Ferramentas > Porta* — detalhes em [`EXECUCAO-SALA-DE-AULA.md`](EXECUCAO-SALA-DE-AULA.md).
 
 ### 5. Sem a placa em mãos
 

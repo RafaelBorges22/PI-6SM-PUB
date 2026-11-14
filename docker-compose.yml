@@ -1,3 +1,12 @@
+# Smart Parking - ambiente em containers.
+#
+#   docker compose up -d                        -> so infraestrutura (PostgreSQL + Mosquitto),
+#                                                  para rodar o backend com ./gradlew bootRun
+#   docker compose --profile app up -d --build  -> tudo: infra + API + frontend Web
+#
+# Portas e senhas podem ser trocadas no arquivo .env (copie de .env.example).
+# Guia completo: EXECUCAO-SALA-DE-AULA.md
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,7 +17,7 @@ services:
       POSTGRES_PASSWORD: smartparking
     ports:
       # Porta do host configuravel: em maquinas que ja rodam um Postgres local,
-      # use POSTGRES_PORT=5433 docker compose up -d (e ajuste DB_URL no backend).
+      # use POSTGRES_PORT=5433 (e, se usar bootRun, ajuste DB_URL no backend).
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -22,12 +31,47 @@ services:
     image: eclipse-mosquitto:2
     container_name: smartparking-mosquitto
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      # O ESP32 conecta em IP-DO-PC:MQTT_PORT (MQTT_BROKER/MQTT_PORT no config.h).
+      - "${MQTT_PORT:-1883}:1883"
+      - "${MQTT_WS_PORT:-9001}:9001"
     volumes:
       - ./infra/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
       - mosquitto-log:/mosquitto/log
+
+  backend:
+    profiles: ["app"]
+    build: ./backend
+    image: smartparking-backend
+    container_name: smartparking-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      # Dentro da rede do compose os servicos se enxergam pelo nome (postgres, mosquitto).
+      DB_URL: jdbc:postgresql://postgres:5432/smartparking
+      DB_USER: smartparking
+      DB_PASSWORD: smartparking
+      MQTT_BROKER: tcp://mosquitto:1883
+      MQTT_TOPICO: ${MQTT_TOPICO:-smart-parking/vaga/+}
+      JWT_SECRET: ${JWT_SECRET:-smart-parking-chave-de-desenvolvimento-nao-use-em-producao}
+      TEMPO_LIMITE_OFFLINE: ${TEMPO_LIMITE_OFFLINE:-90}
+    ports:
+      - "${API_PORT:-8085}:8085"
+    restart: unless-stopped
+
+  frontend:
+    profiles: ["app"]
+    build: ./frontend
+    image: smartparking-frontend
+    container_name: smartparking-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
 
 volumes:
   postgres-data:
