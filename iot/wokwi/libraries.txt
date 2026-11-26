@@ -1,0 +1,3 @@
+# Bibliotecas do Wokwi (mesmas do platformio.ini)
+PubSubClient
+ArduinoJson

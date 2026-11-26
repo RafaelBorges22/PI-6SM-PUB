@@ -11,10 +11,13 @@ import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.DisabledException
+import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /** Traduz as excecoes da aplicacao para o corpo padrao [ApiError]. */
 @RestControllerAdvice
@@ -48,6 +51,15 @@ class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException::class)
     fun acessoNegado(e: AccessDeniedException, req: HttpServletRequest) =
         resposta(HttpStatus.FORBIDDEN, e.message ?: "Acesso negado para este perfil", req)
+
+    /** Rota inexistente: sem este handler o catch-all abaixo devolveria 500. */
+    @ExceptionHandler(NoResourceFoundException::class, NoHandlerFoundException::class)
+    fun rotaInexistente(e: Exception, req: HttpServletRequest) =
+        resposta(HttpStatus.NOT_FOUND, "Rota nao encontrada", req)
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
+    fun metodoNaoSuportado(e: HttpRequestMethodNotSupportedException, req: HttpServletRequest) =
+        resposta(HttpStatus.METHOD_NOT_ALLOWED, "Metodo ${e.method} nao suportado nesta rota", req)
 
     @ExceptionHandler(Exception::class)
     fun erroInterno(e: Exception, req: HttpServletRequest): ResponseEntity<ApiError> {

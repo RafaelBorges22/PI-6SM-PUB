@@ -98,6 +98,8 @@ copy .env.example .env
 | `POSTGRES_PORT` | `5432` | Já existe um PostgreSQL instalado | Nenhum (a API usa a rede interna do Docker) |
 | `MQTT_PORT` | `1883` | Já existe um broker MQTT instalado | Mude `MQTT_PORT` no `config.h` e regrave o ESP32 |
 | `MQTT_TOPICO` | `smart-parking/vaga/+` | Raramente | `MQTT_TOPIC` do ESP32 precisa casar com ele |
+| `MQTT_BROKER` | `tcp://mosquitto:1883` | Sem acesso ao firewall / Wokwi: `tcp://broker.hivemq.com:1883` | `MQTT_BROKER` do `config.h` no mesmo broker (seção 3) |
+| `MQTT_CLIENT_ID` | `smart-parking-backend` | Broker público (precisa ser único) | Nenhum |
 | `TEMPO_LIMITE_OFFLINE` | `90` | Demonstrar OFFLINE mais rápido | Segundos sem mensagem até o sensor ficar OFFLINE |
 | `JWT_SECRET` | chave de dev | Uso fora do laboratório | Mínimo 32 caracteres |
 
@@ -117,6 +119,14 @@ O ESP32 é **outro dispositivo** na rede: ele não enxerga `localhost` do PC.
 3. **Mesma rede e 2,4 GHz:** PC e ESP32 na mesma rede; o ESP32 não conecta em 5 GHz.
    Redes da faculdade costumam isolar os dispositivos — se o ESP32 conectar no Wi-Fi mas
    não no MQTT (`rc=-2`), use o **roteador do celular** para os dois.
+
+> **Sem permissão de administrador para o firewall?** Use um broker público
+> (`broker.hivemq.com`): ESP32 e API só fazem conexões de saída e nada precisa ser liberado.
+> No `.env`: `MQTT_BROKER=tcp://broker.hivemq.com:1883`, `MQTT_TOPICO=spk-SEUPREFIXO/vaga/+`
+> e `MQTT_CLIENT_ID=spk-SEUPREFIXO-backend`; no `config.h`: `MQTT_BROKER "broker.hivemq.com"`
+> e `MQTT_TOPIC "spk-SEUPREFIXO/vaga/01"`. Passo a passo em
+> [`iot/CONEXAO-IOT.md`](iot/CONEXAO-IOT.md#sem-permissão-para-liberar-o-firewall-notebook-da-faculdade).
+> Simulação no Wokwi: [`iot/wokwi/LEIA-ME.md`](iot/wokwi/LEIA-ME.md).
 
 ## 4. Preparar a Arduino IDE (uma vez por PC)
 
@@ -183,9 +193,10 @@ placas ESP32 precisam estar instalados.
    #define VAGA_ID        1
    #define MQTT_TOPIC     "smart-parking/vaga/01"
 
-   // ---- Sensor ----
-   #define PINO_TRIG      5
-   #define PINO_ECHO      18
+   // ---- Pinos (montagem do Wokwi "Versão Física") ----
+   #define PINO_TRIG      5                       // direto no TRIG
+   #define PINO_ECHO      18                      // ECHO pelo divisor 1k/2k
+   #define PINO_LED       19                      // LED vermelho + 220 Ohm
    #define LIMITE_OCUPADA_CM 150.0
    ```
 
@@ -217,11 +228,22 @@ placas ESP32 precisam estar instalados.
    ```text
    === Smart Parking - sensor de vaga ===
    Dispositivo: ESP32-VAGA-01 | Vaga: 1 | Topico: smart-parking/vaga/01
+   Pinos: TRIG=5 ECHO=18 LED=19 | Limite: 150 cm
+   Conectando ao Wi-Fi NOME-DA-REDE ...
    WiFi conectado. IP: 192.168.0.57
-   Conectando ao broker MQTT 192.168.0.100:1883 ... MQTT conectado
-   Distancia: 80.5 cm | Status: OCUPADA
+   Conectando ao broker MQTT 192.168.0.100:1883 como ESP32-VAGA-01-A1B2C3 ... MQTT conectado
+   Distancia: 80.5 cm | Status: OCUPADA | LED: ACESO
    Mensagem publicada em smart-parking/vaga/01: {...}
    ```
+
+   Com o broker público, o tópico e o broker mostrados são os do seu `config.h`
+   (ex.: `spk-7f3a/vaga/01` e `broker.hivemq.com:1883`).
+
+6. **Teste da vaga 01:** coloque a mão ou um objeto a menos de `LIMITE_OCUPADA_CM` do
+   sensor. Em até ~2 s o **LED acende**, o Monitor Serial mostra `Status: OCUPADA | LED: ACESO`
+   seguido de `Mensagem publicada ...`, e no frontend (<http://localhost:8080>) a **vaga 1 do
+   Bloco A** fica OCUPADA com o dispositivo `ESP32-VAGA-01` **ONLINE**. Tire a mão: o LED
+   apaga e a vaga volta a LIVRE.
 
 > ⚠️ Não faça commit do `config.h` com o SSID e a senha reais. Antes do commit, volte os
 > valores de exemplo ou rode
@@ -258,7 +280,7 @@ Sem o kit em mãos, o simulador publica o mesmo payload: `.\scripts\simular-sens
 | `Failed to connect to ESP32` / `Connecting....` | Placa não entrou em modo de gravação | Segure **BOOT** durante o upload; confira a COM |
 | `Port is busy` / acesso negado na COM | Monitor Serial ou outro programa usando a porta | Feche o Monitor Serial e reenvie |
 | `Conectando ao Wi-Fi ....` infinito | SSID/senha errados ou rede 5 GHz | Corrija `WIFI_SSID`/`WIFI_PASSWORD`; use 2,4 GHz |
-| `MQTT ... falhou (rc=-2)` | ESP32 não alcança o PC | `MQTT_BROKER` errado, firewall da 1883 ou rede isolada (seção 3) |
+| `MQTT ... falhou (rc=-2)` | ESP32 não alcança o PC | `MQTT_BROKER` errado, firewall da 1883 ou rede isolada (seção 3); sem acesso ao firewall, use o broker público |
 | Distância sempre 400 cm | ECHO sem sinal | Fiação/divisor do ECHO e 5 V no VCC do sensor |
 | Frontend abre mas login dá erro de conexão | API ainda subindo ou endereço errado | `docker compose --profile app logs backend`; confira o campo *Endereço da API* |
 | `port is already allocated` no `docker compose` | Porta ocupada no PC | Troque a porta no `.env` (seção 2) |

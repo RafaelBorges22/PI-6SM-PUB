@@ -16,6 +16,7 @@ Veículo → HC-SR04 → ESP32 ──Wi-Fi──► Mosquitto (:1883) ──► 
 | Broker | `infra/mosquitto/config/mosquitto.conf` + `docker-compose.yml` |
 | Consumidor no backend | `backend/src/main/kotlin/br/com/smartparking/api/mqtt/` |
 | Simulador (sem placa) | `scripts/simular-sensor.ps1` / `scripts/simular-sensor.sh` |
+| Simulação no Wokwi | [`iot/wokwi/`](wokwi/LEIA-ME.md) — montagem <https://wokwi.com/projects/481580197751757825> |
 
 ---
 
@@ -24,9 +25,14 @@ Veículo → HC-SR04 → ESP32 ──Wi-Fi──► Mosquitto (:1883) ──► 
 - 1 × ESP32 DevKit (placa `esp32dev`)
 - 1 × sensor ultrassônico HC-SR04
 - 2 resistores para o divisor de tensão do ECHO (ex.: **1 kΩ + 2 kΩ**, ou 10 kΩ + 20 kΩ)
+- 1 LED vermelho + resistor de **220 Ω** (indicador local: aceso = vaga ocupada)
 - Protoboard, jumpers e um cabo USB **de dados** (alguns cabos só carregam)
 
 ## 2. Ligação elétrica
+
+A montagem de referência é o projeto do Wokwi
+[ESP32 - Smart Parking (Versão Física)](https://wokwi.com/projects/481580197751757825); o
+firmware e o `config.h` seguem exatamente esses pinos.
 
 | HC-SR04 | ESP32 | Observação |
 |---|---|---|
@@ -34,6 +40,11 @@ Veículo → HC-SR04 → ESP32 ──Wi-Fi──► Mosquitto (:1883) ──► 
 | GND | GND | GND comum |
 | TRIG | **GPIO 5** | 3,3 V do ESP32 é suficiente para disparar |
 | ECHO | **GPIO 18 via divisor** | ⚠️ O ECHO sai em **5 V**; o GPIO do ESP32 aceita só **3,3 V** |
+
+| LED | ESP32 | Observação |
+|---|---|---|
+| Anodo (perna longa) | **GPIO 19** via resistor de **220 Ω** | Aceso = OCUPADA, apagado = LIVRE |
+| Catodo (perna curta) | GND | |
 
 Divisor de tensão no ECHO:
 
@@ -45,7 +56,7 @@ ECHO ──[ 1 kΩ ]──┬── GPIO 18
                 GND          → 5 V × 2/(1+2) ≈ 3,3 V
 ```
 
-Os pinos podem ser trocados em `config.h` (`PINO_TRIG`, `PINO_ECHO`). Evite os GPIO 6–11
+Os pinos podem ser trocados em `config.h` (`PINO_TRIG`, `PINO_ECHO`, `PINO_LED`). Evite os GPIO 6–11
 (flash) e os pinos de boot 0, 2, 12 e 15.
 
 ## 3. Subir o broker e o backend
@@ -79,6 +90,26 @@ O ESP32 é **outro host** na rede, então `localhost` não serve para ele.
 4. **Wi-Fi 2,4 GHz:** o ESP32 **não** conecta em redes só de 5 GHz.
 5. Teste a partir de outra máquina/celular (app *MQTT Explorer* ou *MyMQTT*) conectando em
    `IP-DO-PC:1883` antes de gravar a placa.
+
+### Sem permissão para liberar o firewall (notebook da faculdade)
+
+Use um **broker público**: ESP32 e backend apenas fazem conexões de **saída** até ele, então
+nada precisa ser liberado no PC, e os dois nem precisam estar na mesma rede. É também o único
+jeito de o simulador Wokwi falar com o backend.
+
+```text
+ESP32 ──► broker.hivemq.com:1883 ◄── backend
+```
+
+1. Confira se a rede deixa sair pela 1883: `Test-NetConnection broker.hivemq.com -Port 1883`
+   (`TcpTestSucceeded : True`). Se der `False`, ligue o notebook no roteador do celular.
+2. Escolha um prefixo aleatório do grupo (ex.: `spk-7f3a`).
+3. `config.h`: `MQTT_BROKER "broker.hivemq.com"` e `MQTT_TOPIC "spk-7f3a/vaga/01"`.
+4. Backend (`.env` ou variáveis de ambiente): `MQTT_BROKER=tcp://broker.hivemq.com:1883`,
+   `MQTT_TOPICO=spk-7f3a/vaga/+`, `MQTT_CLIENT_ID=spk-7f3a-backend`.
+
+O banco não muda: com o tópico novo o backend acha o dispositivo pelo `deviceId`. O broker
+público é aberto a qualquer pessoa que conheça o tópico — use só em aula/demonstração.
 
 ## 5. Cadastro no backend
 
@@ -142,9 +173,11 @@ kit em *Ferramentas > Porta*. Passo a passo completo: [`EXECUCAO-SALA-DE-AULA.md
 ```text
 === Smart Parking - sensor de vaga ===
 Dispositivo: ESP32-VAGA-01 | Vaga: 1 | Topico: smart-parking/vaga/01
+Pinos: TRIG=5 ECHO=18 LED=19 | Limite: 150 cm
+Conectando ao Wi-Fi MinhaRede ...
 WiFi conectado. IP: 192.168.0.57
-Conectando ao broker MQTT 192.168.0.100:1883 ... MQTT conectado
-Distancia: 80.5 cm | Status: OCUPADA
+Conectando ao broker MQTT 192.168.0.100:1883 como ESP32-VAGA-01-A1B2C3 ... MQTT conectado
+Distancia: 80.5 cm | Status: OCUPADA | LED: ACESO
 Mensagem publicada em smart-parking/vaga/01: {"deviceId":"ESP32-VAGA-01","vagaId":1,"distancia":80.5,"status":"OCUPADA"}
 ```
 
@@ -163,9 +196,17 @@ MQTT [smart-parking/vaga/01] device=ESP32-VAGA-01 distancia=80.5cm status=OCUPAD
 **API:** `GET /api/vagas/1` deve mostrar o novo `status`, e `GET /api/dispositivos/1` deve
 mostrar `ONLINE` com a `ultimaComunicacao` atualizada.
 
+**Teste físico da vaga 01:** aproxime a mão a menos de `LIMITE_OCUPADA_CM` do sensor → o LED
+acende, a mensagem `OCUPADA` é publicada e a vaga 1 do Bloco A muda no app. Afaste → LED
+apaga e a vaga volta a `LIVRE`.
+
 ## 8. Calibração e comportamento do firmware
 
-- `distancia <= LIMITE_OCUPADA_CM` → **OCUPADA**; acima disso → **LIVRE**.
+- `distancia <= LIMITE_OCUPADA_CM` → **OCUPADA** (LED aceso); acima disso → **LIVRE** (LED apagado).
+- O LED é atualizado a cada leitura, **mesmo sem Wi-Fi ou broker**: a rede é reconectada em
+  segundo plano (Wi-Fi a cada 20 s, MQTT a cada 3 s) sem travar a medição.
+- O client ID MQTT é `DEVICE_ID` + final do MAC, para não colidir com outro cliente em broker
+  público.
 - Sem eco (nada no alcance de ~4 m) → firmware assume 400 cm → **LIVRE**.
 - Cada amostra é a **mediana de 5 leituras** (`LEITURAS_POR_AMOSTRA`), o que filtra os picos do
   HC-SR04.
@@ -205,14 +246,15 @@ docker exec smartparking-mosquitto mosquitto_pub -t "smart-parking/vaga/01" -m '
 | Sintoma (monitor serial / log) | Causa provável | Solução |
 |---|---|---|
 | `Conectando ao Wi-Fi ....` infinito | SSID/senha errados ou rede 5 GHz | Corrija o `config.h`; use rede 2,4 GHz |
-| `falhou (rc=-2)` | Broker inalcançável | IP errado, firewall bloqueando 1883 ou redes diferentes (passo 4) |
+| `falhou (rc=-2)` | Broker inalcançável | IP errado, firewall bloqueando 1883 ou redes diferentes (passo 4); sem acesso ao firewall, use o broker público |
+| LED não acende com a vaga ocupada | LED invertido ou sem resistor/GND | Perna longa no lado do resistor (GPIO 19); catodo no GND |
 | `falhou (rc=5)` | Broker exige autenticação | Preencha `MQTT_USER`/`MQTT_PASSWORD` ou use `allow_anonymous true` |
 | Distância sempre 400 cm | ECHO sem sinal | Confira fiação/divisor do ECHO e alimentação 5 V do sensor |
 | Distância oscilando muito | Superfície inclinada/macia ou sensor solto | Fixe o sensor perpendicular à vaga; aumente `LEITURAS_POR_AMOSTRA` |
 | ESP32 reinicia ao ligar o sensor | Alimentação insuficiente | Use outra porta USB/fonte; cabo mais curto |
 | Backend: `Nenhum dispositivo cadastrado para o topico ...` | Tópico/`deviceId` não cadastrados | Cadastre o dispositivo (passo 5) |
 | Backend: `nao esta vinculado a nenhuma vaga` | Dispositivo sem vaga | Vincule o dispositivo a uma vaga na API |
-| Backend: `Falha ao conectar no broker MQTT` | Mosquitto fora do ar | `docker compose up -d`; o backend reconecta sozinho |
+| Backend: `Falha ao conectar no broker MQTT ... Nova tentativa em 5 s` | Broker fora do ar ou sem internet | `docker compose up -d` (ou confira a internet); o backend tenta de novo sozinho a cada 5 s |
 | Mensagem chega no `mosquitto_sub` mas a vaga não muda | Vaga em MANUTENCAO ou status igual ao atual | Comportamento esperado (RN04/RN06) |
 
 ## 11. Pontos de atenção (revisão do IoT)
@@ -240,11 +282,8 @@ mostra `1 dispositivo(s) marcado(s) OFFLINE ...` e `GET /api/dispositivos/1` pas
 
 Nenhum impede a demonstração:
 
-1. **Reconexão bloqueante.** `conectarWiFi()` e `conectarMqtt()` ficam em laço até conectar; se o
-   Wi-Fi cair durante a reconexão MQTT, o laço não volta a checar o Wi-Fi. Na prática basta
-   reiniciar a placa; uma melhoria seria limitar as tentativas e chamar `ESP.restart()`.
-2. **Credenciais no `config.h` versionado** (ver aviso no passo 6).
-3. **Broker sem autenticação** (`allow_anonymous true`): adequado para laboratório; em produção,
+1. **Credenciais no `config.h` versionado** (ver aviso no passo 6).
+2. **Broker sem autenticação** (`allow_anonymous true`): adequado para laboratório; em produção,
    usar `password_file` e preencher `MQTT_USER`/`MQTT_PASSWORD` no firmware e
    `SMARTPARKING_MQTT_USUARIO`/`SMARTPARKING_MQTT_SENHA` no backend (propriedades
    `smartparking.mqtt.usuario`/`senha` de `MqttProperties`).

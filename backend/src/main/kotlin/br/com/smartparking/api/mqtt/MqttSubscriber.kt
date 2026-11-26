@@ -13,6 +13,9 @@ import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Cliente MQTT do backend (secao 36 da especificacao).
@@ -20,6 +23,11 @@ import java.nio.charset.StandardCharsets
  * Conecta ao broker Mosquitto, assina `smart-parking/vaga/+` e repassa cada
  * mensagem ao [LeituraSensorService]. A reconexao automatica do Paho reassina
  * o topico no callback `connectComplete`.
+ *
+ * O Paho so reconecta sozinho depois de uma primeira conexao bem-sucedida. Se o
+ * broker estiver fora do ar quando a API sobe (Mosquitto ainda iniciando, broker
+ * publico sem internet), a primeira conexao e repetida a cada
+ * [INTERVALO_NOVA_TENTATIVA_SEGUNDOS] segundos ate dar certo.
  *
  * Quando `smartparking.mqtt.habilitado=false` o componente fica inerte, o que
  * permite subir a API (e rodar os testes) sem broker disponivel.
@@ -35,6 +43,10 @@ class MqttSubscriber(
     @Volatile
     private var client: MqttClient? = null
 
+    private val agendador: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { tarefa ->
+        Thread(tarefa, "mqtt-primeira-conexao").apply { isDaemon = true }
+    }
+
     @EventListener(ApplicationReadyEvent::class)
     fun conectar() {
         if (!properties.habilitado) {
@@ -47,15 +59,29 @@ class MqttSubscriber(
             // O campo precisa estar preenchido ANTES do connect: o callback
             // connectComplete roda na thread do Paho e e quem assina o topico.
             client = mqttClient
+        } catch (e: MqttException) {
+            log.error("Endereco de broker MQTT invalido '{}': {}", properties.broker, e.message)
+            return
+        }
+        agendador.execute(::tentarPrimeiraConexao)
+    }
+
+    private fun tentarPrimeiraConexao() {
+        val mqttClient = client ?: return
+        try {
             mqttClient.connect(opcoesDeConexao())
             log.info("Conectado ao broker MQTT {} como {}", properties.broker, properties.clientId)
         } catch (e: MqttException) {
-            // Nao derruba a aplicacao: a API REST continua util e o Paho tenta reconectar.
+            // Nao derruba a aplicacao: a API REST continua util enquanto o broker nao responde.
             log.error(
-                "Falha ao conectar no broker MQTT {}: {}. A API continua no ar; verifique o Mosquitto.",
+                "Falha ao conectar no broker MQTT {}: {}. Nova tentativa em {} s; a API continua no ar.",
                 properties.broker,
                 e.message,
+                INTERVALO_NOVA_TENTATIVA_SEGUNDOS,
             )
+            if (!agendador.isShutdown) {
+                agendador.schedule(::tentarPrimeiraConexao, INTERVALO_NOVA_TENTATIVA_SEGUNDOS, TimeUnit.SECONDS)
+            }
         }
     }
 
@@ -105,11 +131,16 @@ class MqttSubscriber(
 
     @PreDestroy
     fun desconectar() {
+        agendador.shutdownNow()
         try {
             client?.takeIf { it.isConnected }?.disconnect()
             client?.close()
         } catch (e: MqttException) {
             log.debug("Erro ao encerrar o cliente MQTT: {}", e.message)
         }
+    }
+
+    private companion object {
+        const val INTERVALO_NOVA_TENTATIVA_SEGUNDOS = 5L
     }
 }
